@@ -38,7 +38,10 @@ log_info "Copying macOS frameworks..."
 mkdir -p "$FRAMEWORKS_DST"
 rsync -a "$FRAMEWORKS_SRC/" "$FRAMEWORKS_DST/"
 
-# 5. Build with xcodebuild
+# 5. Apply engine patches (idempotent)
+bash "$SCRIPT_DIR/patch-love.sh"
+
+# 6. Build with xcodebuild
 XCODE_PROJECT="$DEPS_DIR/love/platform/xcode/love.xcodeproj"
 XCODE_BUILD_DIR="$BUILD_DIR/xcode-build"
 
@@ -55,7 +58,7 @@ xcodebuild \
     SYMROOT="$XCODE_BUILD_DIR" \
     2>&1 | tail -20
 
-# 6. Copy love.app to build/
+# 7. Copy love.app to build/
 BUILT_APP="$XCODE_BUILD_DIR/Release/love.app"
 if [ ! -d "$BUILT_APP" ]; then
     die "Build failed — love.app not found at $BUILT_APP"
@@ -64,7 +67,7 @@ fi
 log_info "Copying love.app to build/..."
 rsync -a "$BUILT_APP" "$BUILD_DIR/"
 
-# 7. Verify binary
+# 8. Verify binary
 LOVE_BIN="$BUILD_DIR/love.app/Contents/MacOS/love"
 if [ -x "$LOVE_BIN" ]; then
     log_success "Build complete: $LOVE_BIN"
