@@ -206,6 +206,26 @@ patch_mod_loader() {
     local snippet
     snippet="$(mktemp)"
     cat > "$snippet" << 'MODLOADER'
+-- [Open Heart] Ensure steam_appid.txt exists in CWD for non-Steam launches
+local _oh_f = io.open("steam_appid.txt", "r")
+if _oh_f then _oh_f:close() else
+    _oh_f = io.open("steam_appid.txt", "w")
+    if _oh_f then _oh_f:write("2379780\n") _oh_f:close() end
+end
+-- [Open Heart] Skip tutorial on fresh saves
+if G then G.F_SKIP_TUTORIAL = true end
+-- [Open Heart] Crash log — wrap love.errhand to dump errors to disk
+local _oh_orig_errhand = love.errhand
+love.errhand = function(msg)
+    local trace = debug.traceback("", 2) or ""
+    local report = os.date("=== Open Heart Crash Report ===\nTime: %Y-%m-%d %H:%M:%S\n\n")
+        .. "Error: " .. tostring(msg) .. "\n\n"
+        .. "Traceback:\n" .. trace .. "\n"
+    local _oh_cf = io.open("crash.log", "a")
+    if _oh_cf then _oh_cf:write(report) _oh_cf:close() end
+    love.filesystem.write("crash.log", report)
+    if _oh_orig_errhand then return _oh_orig_errhand(msg) end
+end
 -- [Open Heart] Mod loader — scan save directory for mods
 local _oh_lfs = love.filesystem
 if _oh_lfs.getInfo("Mods") then
