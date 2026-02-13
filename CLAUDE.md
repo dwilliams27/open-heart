@@ -5,16 +5,21 @@ Balatro deep mods via LÖVE 2D engine (C++/ObjC++) modifications paired with Lua
 
 ## Build
 ```
-make build      # clone deps + compile LÖVE from source (~2-5 min first time)
-make test       # 7 smoke tests (build artifacts, LÖVE runs, HTTPS module, Balatro launches, clean shutdown)
-make clean-all  # nuke build/ and deps/ for full rebuild
+make build              # build LÖVE with all engine modules needed by all mods
+make build MOD=example  # build LÖVE with only engine modules needed by a specific mod
+make test               # 7 smoke tests (build artifacts, LÖVE runs, HTTPS module, Balatro launches, clean shutdown)
+make install            # install all mods' Lua files to Balatro Mods/
+make install MOD=example  # install a specific mod
+make clean-all          # nuke build/ and deps/ for full rebuild
 ```
 
 ## Architecture
-- `engine/` — our engine module source (version-controlled), copied into `deps/love/` at build time
-- `scripts/common.sh` — shared paths, config, logging
-- `scripts/build-love.sh` — clone love2d repos, copy frameworks, patch, xcodebuild
-- `scripts/patch-love.sh` — idempotent script that integrates `engine/` mods into LÖVE source
+- `engine/` — engine module source (version-controlled), each with a `module.conf` manifest
+- `mods/` — Lua mods, each with a `mod.conf` manifest declaring engine dependencies
+- `scripts/common.sh` — shared paths, config, logging, `xcode_id()`, `xcode_filetype()`
+- `scripts/build-love.sh` — clone love2d repos, resolve engine deps from mod configs, patch, xcodebuild
+- `scripts/patch-love.sh` — generic data-driven script: takes module names as args, sources each `module.conf`
+- `scripts/install-mod.sh` — copy mod Lua files to `~/Library/Application Support/Balatro/Mods/`
 - `scripts/smoke-test.sh` — verify binary + Balatro compatibility
 - `deps/love/` — LÖVE source (11.x branch), patched at build time (not version-controlled)
 - `build/love.app` — compiled output
@@ -30,6 +35,40 @@ For build scripts, tests, code generation, and all infrastructure: **fail hard a
 - No `x or default_value` patterns unless the default is obviously correct and expected.
 
 **Exception: mod runtime code.** Lua mods that run inside Balatro should be defensive — the game crashing is a bad user experience. Graceful fallbacks are fine there (e.g., nil-checks on game state, pcall around risky operations). The distinction: tooling lies to the developer, mods protect the player.
+
+## Engine Module Manifest: `module.conf`
+
+Each engine module in `engine/<name>/` has a shell-sourceable `module.conf`:
+
+```bash
+MODULE_NAME="https"           # module name (matches directory)
+MODULE_ENUM="M_HTTPS"         # Module.h enum value
+MODULE_DEFINE="LOVE_ENABLE_HTTPS"  # config.h #define
+MODULE_LUAOPEN="luaopen_love_https" # Lua module opener function
+MODULE_FILES="Https.h Https.mm ..." # all files (headers + sources)
+MODULE_SOURCES="Https.mm ..."       # compilable files only (.cpp/.mm/.c/.m)
+```
+
+All 6 fields are required. `patch-love.sh` validates them and fails hard on missing fields. Xcode project IDs are generated deterministically via `xcode_id()` (md5 hash) — no hand-picking IDs.
+
+### Adding a new engine module
+1. Create `engine/<name>/` with C++/ObjC++ source files
+2. Create `engine/<name>/module.conf` with all 6 fields
+3. `make clean-all && make build` — patches are applied automatically
+
+## Mod Manifest: `mod.conf`
+
+Each mod in `mods/<id>/` has a shell-sourceable `mod.conf`:
+
+```bash
+MOD_NAME="Example"          # display name (used as Mods/ subdirectory)
+MOD_ID="example"            # identifier (matches directory)
+MOD_DESCRIPTION="..."       # human-readable description
+MOD_ENGINE_DEPS="https"     # space-separated engine module names (or "" for Lua-only)
+MOD_LUA_ENTRY="Example.lua" # entry point Lua file
+```
+
+Mod Lua files live in `mods/<id>/lua/` and get installed to `~/Library/Application Support/Balatro/Mods/<MOD_NAME>/`.
 
 ## Engine Modules
 

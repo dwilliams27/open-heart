@@ -49,3 +49,23 @@ run_with_timeout() {
     wait "$watcher" 2>/dev/null 2>&1 || true
     return "$rc"
 }
+
+# Deterministic Xcode ID generation from a namespace string.
+# Produces a 24-char uppercase hex string (same input → same output).
+xcode_id() {
+    local namespace="$1" purpose="$2" name="$3"
+    echo -n "openheart:${namespace}:${purpose}:${name}" \
+        | md5 | tr '[:lower:]' '[:upper:]' | cut -c1-24
+}
+
+# Map file extension to Xcode lastKnownFileType
+xcode_filetype() {
+    case "$1" in
+        *.h)   echo "sourcecode.c.h" ;;
+        *.cpp) echo "sourcecode.cpp.cpp" ;;
+        *.mm)  echo "sourcecode.cpp.objcpp" ;;
+        *.c)   echo "sourcecode.c.c" ;;
+        *.m)   echo "sourcecode.c.objc" ;;
+        *)     die "Unknown file type for Xcode: $1" ;;
+    esac
+}
