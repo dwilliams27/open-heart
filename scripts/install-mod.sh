@@ -28,6 +28,14 @@ install_mod() {
     log_info "Installing mod '$MOD_NAME' to $dest..."
     mkdir -p "$dest"
     rsync -a "$lua_dir/" "$dest/"
+
+    # Install assets if present
+    local assets_dir="$mod_dir/assets"
+    if [ -d "$assets_dir" ]; then
+        log_info "Installing assets for '$MOD_NAME'..."
+        rsync -a "$assets_dir/" "$dest/assets/"
+    fi
+
     log_success "Installed mod '$MOD_NAME'"
     INSTALLED=$((INSTALLED + 1))
 }

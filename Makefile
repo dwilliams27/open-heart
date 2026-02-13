@@ -1,4 +1,4 @@
-.PHONY: all build test install clean clean-all
+.PHONY: all build test install generate clean clean-all
 
 MOD ?= all
 
@@ -12,6 +12,9 @@ test:
 
 install:
 	@bash scripts/install-mod.sh $(MOD)
+
+generate:
+	@bash scripts/generate-asset.sh $(MOD) $(ASSET) "$(PROMPT)" $(if $(MODEL),--model $(MODEL))
 
 clean:
 	rm -rf build/

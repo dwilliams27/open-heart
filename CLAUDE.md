@@ -101,6 +101,51 @@ end
 
 **In mods:** wrap `love.https.request()` in `pcall` and handle status 0 (network error) gracefully — the player may be offline.
 
+## Asset Generation
+
+AI-powered sprite generation for mod assets using Google Gemini.
+
+### Setup
+Set `GEMINI_API_KEY` environment variable (Google AI API key). Requires `jq` (`brew install jq`).
+
+### Usage
+```
+make generate MOD=weatherdeck ASSET=j_weatherman PROMPT="cheerful weatherman with umbrella"
+make generate MOD=weatherdeck ASSET=j_weatherman PROMPT="..." MODEL=gemini-3-pro-image-preview
+```
+
+Or directly:
+```bash
+scripts/generate-asset.sh <mod_id> <asset_key> "<prompt>" [--model MODEL]
+```
+
+Asset key prefixes: `j_` (joker), `b_` (back), `t_` (tarot).
+
+Models: `gemini-2.5-flash-image` (default, fast/cheap for iteration), `gemini-3-pro-image-preview` (higher quality for final art).
+
+### Asset directory convention
+```
+mods/<mod_id>/assets/
+├── 1x/          # 71x95 per sprite
+│   └── j_key.png
+└── 2x/          # 142x190 per sprite
+    └── j_key.png
+```
+
+Assets are installed alongside Lua files by `make install`.
+
+### Lua sprite loading pattern
+```lua
+-- oh_load_sprite(center_key, asset_key, mod_dir)
+-- Loads a custom sprite atlas and points the center at it.
+-- Graceful fallback: if asset missing, vanilla sprite remains.
+oh_load_sprite("j_weatherman", "j_weatherman", "Mods/WeatherDeck")
+```
+
+Call after registering the center in `init_item_prototypes`. Uses `pcall` (mod runtime = defensive).
+
+**Important:** Vanilla `Card:set_sprites` hardcodes `G.ASSET_ATLAS[_center.set]` for jokers/consumables/vouchers on initial sprite creation, ignoring `_center.atlas`. WeatherDeck includes a `Card:set_sprites` post-hook that fixes this — any mod using custom sprites should include the same hook (or it should be extracted to a shared helper if multiple mods need it).
+
 ## Conventions
 - Shell scripts use `set -euo pipefail` and `die()` for fatal errors
 - Balatro requires `steam_appid.txt` (containing `2379780`) in the working directory when launched outside Steam

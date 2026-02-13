@@ -5,6 +5,68 @@
 if not love.https then return end
 
 -- ============================================================
+-- Custom sprite loading
+-- ============================================================
+
+local function oh_load_sprite(center_key, asset_key, mod_dir)
+    -- Respect Balatro's texture scaling setting (1x or 2x)
+    local scale = (G.SETTINGS and G.SETTINGS.GRAPHICS
+                   and G.SETTINGS.GRAPHICS.texture_scaling) or 1
+    local scale_dir = (scale == 2) and "2x" or "1x"
+    local path = mod_dir .. "/assets/" .. scale_dir .. "/" .. asset_key .. ".png"
+
+    if not love.filesystem.getInfo(path) then return false end
+
+    -- Load with mipmaps + dpiscale to match Balatro's atlas loading
+    local ok, img = pcall(love.graphics.newImage, path,
+                          {mipmaps = true, dpiscale = scale})
+    if not ok then
+        print("[Open Heart] Failed to load sprite: " .. path)
+        return false
+    end
+
+    -- Register single-sprite atlas (same structure as vanilla ASSET_ATLAS entries)
+    local atlas_name = "oh_" .. asset_key
+    G.ASSET_ATLAS[atlas_name] = {
+        name = atlas_name,
+        image = img,
+        px = 71,
+        py = 95,
+    }
+
+    -- Point center at our atlas
+    if G.P_CENTERS[center_key] then
+        G.P_CENTERS[center_key].atlas = atlas_name
+        G.P_CENTERS[center_key].pos = { x = 0, y = 0 }
+    end
+
+    return true
+end
+
+-- ============================================================
+-- Hook: Card.set_sprites — support custom atlas on centers
+-- ============================================================
+-- Vanilla set_sprites hardcodes G.ASSET_ATLAS[_center.set] for jokers on
+-- initial sprite creation, ignoring _center.atlas. This post-hook fixes
+-- the atlas after the original runs. (Same approach as Steamodded, but as
+-- a lightweight wrapper instead of a full override.)
+
+local original_set_sprites = Card.set_sprites
+
+function Card:set_sprites(_center, _front)
+    original_set_sprites(self, _center, _front)
+
+    local center = _center or self.config.center
+    if center and center.atlas and self.children.center then
+        local custom_atlas = G.ASSET_ATLAS[center.atlas]
+        if custom_atlas then
+            self.children.center.atlas = custom_atlas
+            self.children.center:set_sprite_pos(center.pos or {x = 0, y = 0})
+        end
+    end
+end
+
+-- ============================================================
 -- Weather state
 -- ============================================================
 
@@ -133,6 +195,7 @@ function Game:init_item_prototypes()
         cost_mult = 1.0,
     }
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_weatherman)
+    oh_load_sprite("j_weatherman", "j_weatherman", "Mods/WeatherDeck")
 
     -- Register Weather Deck back
     G.P_CENTERS.b_weather = {
