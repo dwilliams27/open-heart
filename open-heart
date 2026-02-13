@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# shellcheck source=scripts/common.sh
+source scripts/common.sh
+
+# --- Dependency check ---
+
+if ! command -v gum &>/dev/null; then
+    echo "open-heart requires 'gum' for its interactive UI."
+    echo ""
+    echo "  brew install gum"
+    echo ""
+    echo "https://github.com/charmbracelet/gum"
+    exit 1
+fi
+
+# --- Banner ---
+
+gum style \
+    --border double \
+    --border-foreground 212 \
+    --padding "1 3" \
+    --align center \
+    --bold \
+    "♥ Open Heart ♥" \
+    "Balatro Mod Launcher"
+
+# --- Discover mods ---
+
+mod_ids=()
+mod_names=()
+mod_labels=()
+
+for conf in mods/*/mod.conf; do
+    unset MOD_ID MOD_NAME MOD_DESCRIPTION
+    source "$conf"
+    mod_ids+=("$MOD_ID")
+    mod_names+=("$MOD_NAME")
+    mod_labels+=("$MOD_NAME — $MOD_DESCRIPTION")
+done
+
+if [[ ${#mod_ids[@]} -eq 0 ]]; then
+    die "No mods found in mods/*/mod.conf"
+fi
+
+# --- Mod selection ---
+
+chosen=$(gum choose --header "Select a mod:" "${mod_labels[@]}") || exit 0
+
+# Map selection back to MOD_ID
+selected_id=""
+selected_name=""
+for i in "${!mod_labels[@]}"; do
+    if [[ "${mod_labels[$i]}" == "$chosen" ]]; then
+        selected_id="${mod_ids[$i]}"
+        selected_name="${mod_names[$i]}"
+        break
+    fi
+done
+
+if [[ -z "$selected_id" ]]; then
+    die "Failed to match selection"
+fi
+
+echo ""
+
+# --- Build ---
+
+build_log="$(mktemp)"
+trap 'rm -f "$build_log"' EXIT
+
+if gum spin --spinner dot --title "Building $selected_name..." -- \
+    bash -c "make build MOD=$selected_id > '$build_log' 2>&1"; then
+    gum style --foreground 10 "✓ Build succeeded"
+else
+    gum style --foreground 9 --bold "✗ Build failed"
+    echo ""
+    cat "$build_log"
+    exit 1
+fi
+
+# --- Install ---
+
+install_log="$(mktemp)"
+trap 'rm -f "$build_log" "$install_log"' EXIT
+
+if gum spin --spinner dot --title "Installing $selected_name..." -- \
+    bash -c "make install MOD=$selected_id > '$install_log' 2>&1"; then
+    gum style --foreground 10 "✓ Install succeeded"
+else
+    gum style --foreground 9 --bold "✗ Install failed"
+    echo ""
+    cat "$install_log"
+    exit 1
+fi
+
+# --- Launch ---
+
+echo ""
+gum style --foreground 212 "Launching Balatro with $selected_name..."
+echo ""
+
+LOVE_BIN="$BUILD_DIR/love.app/Contents/MacOS/love"
+
+if [[ ! -x "$LOVE_BIN" ]]; then
+    die "LÖVE binary not found at $LOVE_BIN"
+fi
+
+if [[ ! -f "$BALATRO_LOVE" ]]; then
+    die "Balatro.love not found at $BALATRO_LOVE"
+fi
+
+# Balatro needs steam_appid.txt in the working directory when launched outside Steam
+APPID_FILE="$BUILD_DIR/steam_appid.txt"
+if [[ ! -f "$APPID_FILE" ]]; then
+    echo "$BALATRO_APP_ID" > "$APPID_FILE"
+fi
+
+cd "$BUILD_DIR"
+exec "$LOVE_BIN" "$BALATRO_LOVE"
