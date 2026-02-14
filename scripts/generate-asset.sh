@@ -12,7 +12,7 @@ ASSET_KEY="$2"
 PROMPT="$3"
 shift 3
 
-MODEL="gemini-2.5-flash-image"
+MODEL="gemini-3-pro-image-preview"
 while [ $# -gt 0 ]; do
     case "$1" in
         --model) [ -n "${2:-}" ] || die "--model requires a value"; MODEL="$2"; shift 2 ;;
