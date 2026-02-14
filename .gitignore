@@ -4,3 +4,4 @@ deps/
 *.xcuserdatad
 xcuserdata/
 .env
+__pycache__/
