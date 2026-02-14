@@ -1,6 +1,6 @@
 -- PhoneDeck — Open Heart gameplay mod
 -- Smartphone-themed jokers and deck for Balatro.
--- Phase B scaffold: Calculator joker + Smartphone Deck (hardcoded).
+-- Phase B: implementing jokers incrementally.
 
 -- ============================================================
 -- Custom sprite loading
@@ -94,15 +94,23 @@ function Game:set_language()
             "Odd: {C:mult}+sum/2{} Mult",
         },
     }
+    G.localization.descriptions.Joker.j_flashlight = {
+        name = "Flashlight",
+        text = {
+            "First scored card",
+            "gets {C:chips}X2{} Chips",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Calculator{} joker ({C:attention}Eternal{})",
+            "{C:attention}Flashlight{} joker ({C:attention}Eternal{})",
         },
     }
 
     parse_loc_entry(G.localization.descriptions.Joker.j_calculator)
+    parse_loc_entry(G.localization.descriptions.Joker.j_flashlight)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -135,6 +143,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_calculator)
     oh_load_sprite("j_calculator", "j_calculator", "Mods/PhoneDeck")
 
+    -- Register Flashlight joker
+    G.P_CENTERS.j_flashlight = {
+        key = "j_flashlight",
+        order = 201,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 1,
+        cost = 4,
+        name = "Flashlight",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = {},
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_flashlight)
+    oh_load_sprite("j_flashlight", "j_flashlight", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -151,7 +179,7 @@ function Game:init_item_prototypes()
 end
 
 -- ============================================================
--- Hook: Back.apply_to_run — grant Calculator on run start
+-- Hook: Back.apply_to_run — grant Flashlight on run start
 -- ============================================================
 
 local original_apply = Back.apply_to_run
@@ -162,7 +190,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_calculator", nil, nil, true)
+                local card = add_joker("j_flashlight", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -171,13 +199,27 @@ function Back:apply_to_run()
 end
 
 -- ============================================================
--- Hook: Card.calculate_joker — Calculator scoring
+-- Hook: Card.calculate_joker — PhoneDeck scoring
 -- ============================================================
 
 local original_calc = Card.calculate_joker
 
 function Card:calculate_joker(context)
-    if self.ability.set == "Joker" and self.config.center.key == "j_calculator" then
+    if self.ability.set ~= "Joker" then return original_calc(self, context) end
+    local key = self.config.center.key
+
+    -- Flashlight: first scored card gets X2 chips (per-card hook)
+    if key == "j_flashlight" and context.individual
+       and context.cardarea == G.play then
+        if context.other_card == context.scoring_hand[1] then
+            return {
+                chips = context.other_card.base.nominal or 0,
+                card = self,
+            }
+        end
+    end
+
+    if key == "j_calculator" then
         if context.joker_main then
             -- Sum ranks: A=14, K=13, Q=12, J=11, number cards = face value
             local rank_sum = 0
