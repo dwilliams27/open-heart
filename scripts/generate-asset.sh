@@ -107,6 +107,11 @@ cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/1x.png"
 sips -z 95 71 "$TEMP_DIR/1x.png" >/dev/null 2>&1
 cp "$TEMP_DIR/1x.png" "$ASSETS_1X/${ASSET_KEY}.png"
 
+# --- Apply rounded corner transparency ---
+ROUND_CORNERS="$PROJECT_ROOT/scripts/round-corners.py"
+python3 "$ROUND_CORNERS" "$ASSETS_2X/${ASSET_KEY}.png"
+python3 "$ROUND_CORNERS" "$ASSETS_1X/${ASSET_KEY}.png"
+
 # --- Verify dimensions ---
 verify_dims() {
     local file="$1" expected_w="$2" expected_h="$3"

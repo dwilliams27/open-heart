@@ -117,11 +117,20 @@ function Game:set_language()
             "{C:green}(Photo: {C:attention}#1#{C:green}){}",
         },
     }
+    G.localization.descriptions.Joker.j_maps = {
+        name = "Maps",
+        text = {
+            "{C:mult}+#1#{} Mult if hand is a",
+            "{C:attention}Straight{} or {C:attention}Straight Flush{}",
+            "Bonus increases by {C:mult}+3{} each time",
+            "Also earn {C:money}$2{}",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Camera{} joker ({C:attention}Eternal{})",
+            "{C:attention}Maps{} joker ({C:attention}Eternal{})",
         },
     }
 
@@ -129,6 +138,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_flashlight)
     parse_loc_entry(G.localization.descriptions.Joker.j_fitness)
     parse_loc_entry(G.localization.descriptions.Joker.j_camera)
+    parse_loc_entry(G.localization.descriptions.Joker.j_maps)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -221,6 +231,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_camera)
     oh_load_sprite("j_camera", "j_camera", "Mods/PhoneDeck")
 
+    -- Register Maps joker
+    G.P_CENTERS.j_maps = {
+        key = "j_maps",
+        order = 204,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 2,
+        cost = 6,
+        name = "Maps",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { bonus = 0 } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_maps)
+    oh_load_sprite("j_maps", "j_maps", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -248,7 +278,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_camera", nil, nil, true)
+                local card = add_joker("j_maps", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -291,6 +321,22 @@ function Card:calculate_joker(context)
                 message = localize({ type = "variable", key = "a_mult", vars = { 25 } }),
                 colour = G.C.MULT,
                 card = self,
+            }
+        end
+    end
+
+    -- Maps: +20 Mult (scaling) on Straights/Straight Flushes, +$2
+    if key == "j_maps" and context.joker_main then
+        local hand = G.GAME.last_hand_played
+        if hand == "Straight" or hand == "Straight Flush" then
+            local total = 20 + self.ability.extra.bonus
+            self.ability.extra.bonus = self.ability.extra.bonus + 3
+            return {
+                mult_mod = total,
+                message = localize({ type = "variable", key = "a_mult", vars = { total } }),
+                colour = G.C.MULT,
+                card = self,
+                dollars = 2,
             }
         end
     end
@@ -356,6 +402,13 @@ function Card:generate_UIBox_ability_table()
             local chips = self.ability.extra and self.ability.extra.chips or 0
             desc.text[3] = "{C:green}(Cap: {C:chips}150{C:green}, Currently {C:chips}+" .. chips .. "{C:green}){}"
             desc.text_parsed[3] = loc_parse_string(desc.text[3])
+        end
+    elseif key == "j_maps" then
+        local desc = G.localization.descriptions.Joker.j_maps
+        if desc then
+            local total = 20 + (self.ability.extra and self.ability.extra.bonus or 0)
+            desc.text[1] = "{C:mult}+" .. total .. "{} Mult if hand is a"
+            desc.text_parsed[1] = loc_parse_string(desc.text[1])
         end
     elseif key == "j_camera" then
         local desc = G.localization.descriptions.Joker.j_camera
