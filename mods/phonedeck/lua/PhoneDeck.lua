@@ -109,17 +109,26 @@ function Game:set_language()
             "{C:green}(Cap: {C:chips}150{C:green}, Currently {C:chips}+#1#{C:green}){}",
         },
     }
+    G.localization.descriptions.Joker.j_camera = {
+        name = "Camera",
+        text = {
+            "{C:mult}+25{} Mult if played hand",
+            "matches previous hand type",
+            "{C:green}(Photo: {C:attention}#1#{C:green}){}",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Fitness Tracker{} joker ({C:attention}Eternal{})",
+            "{C:attention}Camera{} joker ({C:attention}Eternal{})",
         },
     }
 
     parse_loc_entry(G.localization.descriptions.Joker.j_calculator)
     parse_loc_entry(G.localization.descriptions.Joker.j_flashlight)
     parse_loc_entry(G.localization.descriptions.Joker.j_fitness)
+    parse_loc_entry(G.localization.descriptions.Joker.j_camera)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -192,6 +201,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_fitness)
     oh_load_sprite("j_fitness", "j_fitness", "Mods/PhoneDeck")
 
+    -- Register Camera joker
+    G.P_CENTERS.j_camera = {
+        key = "j_camera",
+        order = 203,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 2,
+        cost = 6,
+        name = "Camera",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { last_hand = nil } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_camera)
+    oh_load_sprite("j_camera", "j_camera", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -219,7 +248,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_fitness", nil, nil, true)
+                local card = add_joker("j_camera", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -248,6 +277,19 @@ function Card:calculate_joker(context)
         if context.other_card == context.scoring_hand[1] then
             return {
                 chips = context.other_card.base.nominal or 0,
+                card = self,
+            }
+        end
+    end
+
+    -- Camera: +25 Mult if hand matches the photo (main scoring hook)
+    if key == "j_camera" and context.joker_main then
+        local current_hand = G.GAME.last_hand_played
+        if self.ability.extra.last_hand and current_hand == self.ability.extra.last_hand then
+            return {
+                mult_mod = 25,
+                message = localize({ type = "variable", key = "a_mult", vars = { 25 } }),
+                colour = G.C.MULT,
                 card = self,
             }
         end
@@ -292,6 +334,11 @@ function Card:calculate_joker(context)
         end
     end
 
+    -- Camera: update photo after scoring (post-scoring hook)
+    if key == "j_camera" and context.after then
+        self.ability.extra.last_hand = G.GAME.last_hand_played
+    end
+
     return original_calc(self, context)
 end
 
@@ -307,7 +354,14 @@ function Card:generate_UIBox_ability_table()
         local desc = G.localization.descriptions.Joker.j_fitness
         if desc then
             local chips = self.ability.extra and self.ability.extra.chips or 0
-            desc.text[3] = "{C:green}(Currently {C:chips}+" .. chips .. "{C:green} Chips){}"
+            desc.text[3] = "{C:green}(Cap: {C:chips}150{C:green}, Currently {C:chips}+" .. chips .. "{C:green}){}"
+            desc.text_parsed[3] = loc_parse_string(desc.text[3])
+        end
+    elseif key == "j_camera" then
+        local desc = G.localization.descriptions.Joker.j_camera
+        if desc then
+            local photo = (self.ability.extra and self.ability.extra.last_hand) or "None"
+            desc.text[3] = "{C:green}(Photo: {C:attention}" .. photo .. "{C:green}){}"
             desc.text_parsed[3] = loc_parse_string(desc.text[3])
         end
     end
