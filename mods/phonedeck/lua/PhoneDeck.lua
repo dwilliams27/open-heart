@@ -133,11 +133,20 @@ function Game:set_language()
             "{C:attention}last hand{} of round",
         },
     }
+    G.localization.descriptions.Joker.j_playlist = {
+        name = "Playlist",
+        text = {
+            "Playing same hand type",
+            "consecutively builds streak:",
+            "{X:mult,C:white}X1.5{}/{X:mult,C:white}X2{}/{X:mult,C:white}X2.5{} Mult",
+            "{C:green}(Streak: {C:attention}#1#{C:green}){}",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Alarm Clock{} joker ({C:attention}Eternal{})",
+            "{C:attention}Playlist{} joker ({C:attention}Eternal{})",
         },
     }
 
@@ -147,6 +156,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_camera)
     parse_loc_entry(G.localization.descriptions.Joker.j_maps)
     parse_loc_entry(G.localization.descriptions.Joker.j_alarm)
+    parse_loc_entry(G.localization.descriptions.Joker.j_playlist)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -279,6 +289,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_alarm)
     oh_load_sprite("j_alarm", "j_alarm", "Mods/PhoneDeck")
 
+    -- Register Playlist joker
+    G.P_CENTERS.j_playlist = {
+        key = "j_playlist",
+        order = 206,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 3,
+        cost = 8,
+        name = "Playlist",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { streak = 0, last_hand = nil } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_playlist)
+    oh_load_sprite("j_playlist", "j_playlist", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -306,7 +336,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_alarm", nil, nil, true)
+                local card = add_joker("j_playlist", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -347,6 +377,31 @@ function Card:calculate_joker(context)
             return {
                 mult_mod = 25,
                 message = localize({ type = "variable", key = "a_mult", vars = { 25 } }),
+                colour = G.C.MULT,
+                card = self,
+            }
+        end
+    end
+
+    -- Playlist: XMult streak for consecutive same hand type
+    if key == "j_playlist" and context.joker_main then
+        local current_hand = G.GAME.last_hand_played
+        local streak = self.ability.extra.streak
+        -- Compute prospective streak: does current hand match last?
+        if self.ability.extra.last_hand and current_hand == self.ability.extra.last_hand then
+            streak = streak + 1
+        else
+            streak = 0
+        end
+        local STREAK_XMULT = { [0] = 1.0, [1] = 1.5, [2] = 2.0 }
+        local xm = STREAK_XMULT[streak] or 2.5
+        -- Store prospective streak for after hook to commit
+        self.ability.extra._pending_streak = streak
+        self.ability.extra._pending_hand = current_hand
+        if xm > 1 then
+            return {
+                Xmult_mod = xm,
+                message = localize({ type = "variable", key = "a_xmult", vars = { xm } }),
                 colour = G.C.MULT,
                 card = self,
             }
@@ -420,6 +475,16 @@ function Card:calculate_joker(context)
         end
     end
 
+    -- Playlist: commit streak after scoring (post-scoring hook)
+    if key == "j_playlist" and context.after then
+        if self.ability.extra._pending_streak then
+            self.ability.extra.streak = self.ability.extra._pending_streak
+            self.ability.extra.last_hand = self.ability.extra._pending_hand
+            self.ability.extra._pending_streak = nil
+            self.ability.extra._pending_hand = nil
+        end
+    end
+
     -- Camera: update photo after scoring (post-scoring hook)
     if key == "j_camera" and context.after then
         self.ability.extra.last_hand = G.GAME.last_hand_played
@@ -449,6 +514,13 @@ function Card:generate_UIBox_ability_table()
             local total = 20 + (self.ability.extra and self.ability.extra.bonus or 0)
             desc.text[1] = "{C:mult}+" .. total .. "{} Mult if hand is a"
             desc.text_parsed[1] = loc_parse_string(desc.text[1])
+        end
+    elseif key == "j_playlist" then
+        local desc = G.localization.descriptions.Joker.j_playlist
+        if desc then
+            local streak = self.ability.extra and self.ability.extra.streak or 0
+            desc.text[4] = "{C:green}(Streak: {C:attention}" .. streak .. "{C:green}){}"
+            desc.text_parsed[4] = loc_parse_string(desc.text[4])
         end
     elseif key == "j_camera" then
         local desc = G.localization.descriptions.Joker.j_camera
