@@ -142,11 +142,19 @@ function Game:set_language()
             "{C:green}(Streak: {C:attention}#1#{C:green}){}",
         },
     }
+    G.localization.descriptions.Joker.j_battery = {
+        name = "Battery",
+        text = {
+            "{X:mult,C:white}X#1#{} Mult",
+            "Loses {X:mult,C:white}X0.2{} per hand",
+            "Recharges on efficient win",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Playlist{} joker ({C:attention}Eternal{})",
+            "{C:attention}Battery{} joker ({C:attention}Eternal{})",
         },
     }
 
@@ -157,6 +165,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_maps)
     parse_loc_entry(G.localization.descriptions.Joker.j_alarm)
     parse_loc_entry(G.localization.descriptions.Joker.j_playlist)
+    parse_loc_entry(G.localization.descriptions.Joker.j_battery)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -309,6 +318,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_playlist)
     oh_load_sprite("j_playlist", "j_playlist", "Mods/PhoneDeck")
 
+    -- Register Battery joker
+    G.P_CENTERS.j_battery = {
+        key = "j_battery",
+        order = 207,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 3,
+        cost = 8,
+        name = "Battery",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { current_mult = 2.5 } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_battery)
+    oh_load_sprite("j_battery", "j_battery", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -336,7 +365,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_playlist", nil, nil, true)
+                local card = add_joker("j_battery", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -398,6 +427,19 @@ function Card:calculate_joker(context)
         -- Store prospective streak for after hook to commit
         self.ability.extra._pending_streak = streak
         self.ability.extra._pending_hand = current_hand
+        if xm > 1 then
+            return {
+                Xmult_mod = xm,
+                message = localize({ type = "variable", key = "a_xmult", vars = { xm } }),
+                colour = G.C.MULT,
+                card = self,
+            }
+        end
+    end
+
+    -- Battery: decaying XMult, recharges on efficient win
+    if key == "j_battery" and context.joker_main then
+        local xm = math.max(self.ability.extra.current_mult, 0)
         if xm > 1 then
             return {
                 Xmult_mod = xm,
@@ -485,9 +527,21 @@ function Card:calculate_joker(context)
         end
     end
 
+    -- Battery: decay charge after scoring (post-scoring hook)
+    if key == "j_battery" and context.after then
+        self.ability.extra.current_mult = math.max(self.ability.extra.current_mult - 0.2, 0)
+    end
+
     -- Camera: update photo after scoring (post-scoring hook)
     if key == "j_camera" and context.after then
         self.ability.extra.last_hand = G.GAME.last_hand_played
+    end
+
+    -- Battery: recharge on efficient win (end of round hook)
+    if key == "j_battery" and context.end_of_round and not context.game_over then
+        if G.GAME.current_round.hands_left > 0 then
+            self.ability.extra.current_mult = 2.5
+        end
     end
 
     return original_calc(self, context)
@@ -521,6 +575,14 @@ function Card:generate_UIBox_ability_table()
             local streak = self.ability.extra and self.ability.extra.streak or 0
             desc.text[4] = "{C:green}(Streak: {C:attention}" .. streak .. "{C:green}){}"
             desc.text_parsed[4] = loc_parse_string(desc.text[4])
+        end
+    elseif key == "j_battery" then
+        local desc = G.localization.descriptions.Joker.j_battery
+        if desc then
+            local charge = self.ability.extra and self.ability.extra.current_mult or 2.5
+            local charge_str = string.format("%.1f", charge)
+            desc.text[1] = "{X:mult,C:white}X" .. charge_str .. "{} Mult"
+            desc.text_parsed[1] = loc_parse_string(desc.text[1])
         end
     elseif key == "j_camera" then
         local desc = G.localization.descriptions.Joker.j_camera
