@@ -101,16 +101,25 @@ function Game:set_language()
             "gets {C:chips}X2{} Chips",
         },
     }
+    G.localization.descriptions.Joker.j_fitness = {
+        name = "Fitness Tracker",
+        text = {
+            "{C:chips}+1{} Chip for every",
+            "card played this run",
+            "{C:green}(Cap: {C:chips}150{C:green}, Currently {C:chips}+#1#{C:green}){}",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Flashlight{} joker ({C:attention}Eternal{})",
+            "{C:attention}Fitness Tracker{} joker ({C:attention}Eternal{})",
         },
     }
 
     parse_loc_entry(G.localization.descriptions.Joker.j_calculator)
     parse_loc_entry(G.localization.descriptions.Joker.j_flashlight)
+    parse_loc_entry(G.localization.descriptions.Joker.j_fitness)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -163,6 +172,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_flashlight)
     oh_load_sprite("j_flashlight", "j_flashlight", "Mods/PhoneDeck")
 
+    -- Register Fitness Tracker joker
+    G.P_CENTERS.j_fitness = {
+        key = "j_fitness",
+        order = 202,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 1,
+        cost = 5,
+        name = "Fitness Tracker",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { chips = 0 } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_fitness)
+    oh_load_sprite("j_fitness", "j_fitness", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -179,7 +208,7 @@ function Game:init_item_prototypes()
 end
 
 -- ============================================================
--- Hook: Back.apply_to_run — grant Flashlight on run start
+-- Hook: Back.apply_to_run — grant Fitness Tracker on run start
 -- ============================================================
 
 local original_apply = Back.apply_to_run
@@ -190,7 +219,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_flashlight", nil, nil, true)
+                local card = add_joker("j_fitness", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -208,12 +237,29 @@ function Card:calculate_joker(context)
     if self.ability.set ~= "Joker" then return original_calc(self, context) end
     local key = self.config.center.key
 
+    -- Fitness Tracker: accumulate cards played, cap at 150 (pre-scoring hook)
+    if key == "j_fitness" and context.before then
+        self.ability.extra.chips = math.min(150, self.ability.extra.chips + #context.full_hand)
+    end
+
     -- Flashlight: first scored card gets X2 chips (per-card hook)
     if key == "j_flashlight" and context.individual
        and context.cardarea == G.play then
         if context.other_card == context.scoring_hand[1] then
             return {
                 chips = context.other_card.base.nominal or 0,
+                card = self,
+            }
+        end
+    end
+
+    -- Fitness Tracker: score accumulated chips (main scoring hook)
+    if key == "j_fitness" and context.joker_main then
+        if self.ability.extra.chips > 0 then
+            return {
+                chip_mod = self.ability.extra.chips,
+                message = localize({ type = "variable", key = "a_chips", vars = { self.ability.extra.chips } }),
+                colour = G.C.CHIPS,
                 card = self,
             }
         end
@@ -247,4 +293,23 @@ function Card:calculate_joker(context)
     end
 
     return original_calc(self, context)
+end
+
+-- ============================================================
+-- Hook: Card.generate_UIBox_ability_table — dynamic tooltips
+-- ============================================================
+
+local original_gen_ui = Card.generate_UIBox_ability_table
+
+function Card:generate_UIBox_ability_table()
+    local key = self.config.center.key
+    if key == "j_fitness" then
+        local desc = G.localization.descriptions.Joker.j_fitness
+        if desc then
+            local chips = self.ability.extra and self.ability.extra.chips or 0
+            desc.text[3] = "{C:green}(Currently {C:chips}+" .. chips .. "{C:green} Chips){}"
+            desc.text_parsed[3] = loc_parse_string(desc.text[3])
+        end
+    end
+    return original_gen_ui(self)
 end
