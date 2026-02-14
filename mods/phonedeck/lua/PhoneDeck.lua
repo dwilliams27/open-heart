@@ -126,11 +126,18 @@ function Game:set_language()
             "Also earn {C:money}$2{}",
         },
     }
+    G.localization.descriptions.Joker.j_alarm = {
+        name = "Alarm Clock",
+        text = {
+            "{X:mult,C:white}X2{} Mult on",
+            "{C:attention}last hand{} of round",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Maps{} joker ({C:attention}Eternal{})",
+            "{C:attention}Alarm Clock{} joker ({C:attention}Eternal{})",
         },
     }
 
@@ -139,6 +146,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_fitness)
     parse_loc_entry(G.localization.descriptions.Joker.j_camera)
     parse_loc_entry(G.localization.descriptions.Joker.j_maps)
+    parse_loc_entry(G.localization.descriptions.Joker.j_alarm)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -251,6 +259,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_maps)
     oh_load_sprite("j_maps", "j_maps", "Mods/PhoneDeck")
 
+    -- Register Alarm Clock joker
+    G.P_CENTERS.j_alarm = {
+        key = "j_alarm",
+        order = 205,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = true,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 2,
+        cost = 5,
+        name = "Alarm Clock",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = {},
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_alarm)
+    oh_load_sprite("j_alarm", "j_alarm", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -278,7 +306,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_maps", nil, nil, true)
+                local card = add_joker("j_alarm", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -319,6 +347,18 @@ function Card:calculate_joker(context)
             return {
                 mult_mod = 25,
                 message = localize({ type = "variable", key = "a_mult", vars = { 25 } }),
+                colour = G.C.MULT,
+                card = self,
+            }
+        end
+    end
+
+    -- Alarm Clock: X2 Mult on last hand of round
+    if key == "j_alarm" and context.joker_main then
+        if G.GAME.current_round.hands_left == 0 then
+            return {
+                Xmult_mod = 2,
+                message = localize({ type = "variable", key = "a_xmult", vars = { 2 } }),
                 colour = G.C.MULT,
                 card = self,
             }
