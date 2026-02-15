@@ -150,11 +150,20 @@ function Game:set_language()
             "Recharges on efficient win",
         },
     }
+    G.localization.descriptions.Joker.j_stocks = {
+        name = "Stocks",
+        text = {
+            "Sell value increases by",
+            "{C:money}$1{} per hand played",
+            "End of round: {C:green}30%{} triple,",
+            "{C:attention}50%{} hold, {C:red}20%{} crash",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
             "Start run with",
-            "{C:attention}Battery{} joker ({C:attention}Eternal{})",
+            "{C:attention}Stocks{} joker ({C:attention}Eternal{})",
         },
     }
 
@@ -166,6 +175,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_alarm)
     parse_loc_entry(G.localization.descriptions.Joker.j_playlist)
     parse_loc_entry(G.localization.descriptions.Joker.j_battery)
+    parse_loc_entry(G.localization.descriptions.Joker.j_stocks)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -338,6 +348,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_battery)
     oh_load_sprite("j_battery", "j_battery", "Mods/PhoneDeck")
 
+    -- Register Stocks joker
+    G.P_CENTERS.j_stocks = {
+        key = "j_stocks",
+        order = 208,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = false,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 3,
+        cost = 7,
+        name = "Stocks",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = { extra = { sell_bonus = 0 } },
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_stocks)
+    oh_load_sprite("j_stocks", "j_stocks", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -365,7 +395,7 @@ function Back:apply_to_run()
     if self.effect.center.key == "b_smartphone" then
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_battery", nil, nil, true)
+                local card = add_joker("j_stocks", nil, nil, true)
                 card.ability.eternal = true
                 return true
             end,
@@ -386,6 +416,12 @@ function Card:calculate_joker(context)
     -- Fitness Tracker: accumulate cards played, cap at 150 (pre-scoring hook)
     if key == "j_fitness" and context.before then
         self.ability.extra.chips = math.min(150, self.ability.extra.chips + #context.full_hand)
+    end
+
+    -- Stocks: sell value grows $1 per hand (pre-scoring hook)
+    if key == "j_stocks" and context.before then
+        self.ability.extra.sell_bonus = self.ability.extra.sell_bonus + 1
+        self.sell_cost = math.floor(self.config.center.cost / 2) + self.ability.extra.sell_bonus
     end
 
     -- Flashlight: first scored card gets X2 chips (per-card hook)
@@ -537,8 +573,26 @@ function Card:calculate_joker(context)
         self.ability.extra.last_hand = G.GAME.last_hand_played
     end
 
+    -- Stocks: sell value triples/holds/crashes at end of round
+    if key == "j_stocks" and context.end_of_round and not context.individual and not context.repetition and not context.game_over then
+        local roll = pseudorandom("stocks")
+        if roll < 0.30 then
+            self.ability.extra.sell_bonus = self.ability.extra.sell_bonus * 3
+            card_eval_status_text(self, "extra", nil, nil, nil,
+                { message = "Triple!", colour = G.C.MONEY })
+        elseif roll < 0.80 then
+            card_eval_status_text(self, "extra", nil, nil, nil,
+                { message = "Hold", colour = G.C.GREY })
+        else
+            self.ability.extra.sell_bonus = 0
+            card_eval_status_text(self, "extra", nil, nil, nil,
+                { message = "Crash!", colour = G.C.RED })
+        end
+        self.sell_cost = math.floor(self.config.center.cost / 2) + self.ability.extra.sell_bonus
+    end
+
     -- Battery: recharge on efficient win (end of round hook)
-    if key == "j_battery" and context.end_of_round and not context.game_over then
+    if key == "j_battery" and context.end_of_round and not context.individual and not context.repetition and not context.game_over then
         if G.GAME.current_round.hands_left > 0 then
             self.ability.extra.current_mult = 2.5
         end
