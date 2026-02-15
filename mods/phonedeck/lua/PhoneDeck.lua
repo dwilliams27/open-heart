@@ -55,11 +55,36 @@ function Card:set_sprites(_center, _front)
     original_set_sprites(self, _center, _front)
 
     local center = _center or self.config.center
-    if center and center.atlas and self.children.center then
+
+    -- Fix center atlas for custom jokers and deck backs
+    if center and center.atlas then
         local custom_atlas = G.ASSET_ATLAS[center.atlas]
         if custom_atlas then
-            self.children.center.atlas = custom_atlas
-            self.children.center:set_sprite_pos(center.pos or {x = 0, y = 0})
+            if self.children.center then
+                self.children.center.atlas = custom_atlas
+                self.children.center:set_sprite_pos(center.pos or {x = 0, y = 0})
+            end
+            -- For Back cards: also fix the back child (deck selection preview)
+            if center.set == "Back" and self.children.back then
+                self.children.back.atlas = custom_atlas
+                self.children.back:set_sprite_pos(center.pos or {x = 0, y = 0})
+            end
+        end
+    end
+
+    -- For playing cards in a Smartphone Deck run: override card back sprite
+    -- Guard: only apply to actual playing cards (not deck previews or jokers)
+    if self.children.back
+       and self.config.center and self.config.center.set ~= "Back"
+       and self.config.center.set ~= "Joker"
+       and G.GAME and G.GAME.selected_back
+       and G.GAME.selected_back.effect
+       and G.GAME.selected_back.effect.center
+       and G.GAME.selected_back.effect.center.key == "b_smartphone" then
+        local back_atlas = G.ASSET_ATLAS["oh_b_smartphone"]
+        if back_atlas then
+            self.children.back.atlas = back_atlas
+            self.children.back:set_sprite_pos({x = 0, y = 0})
         end
     end
 end
@@ -159,11 +184,18 @@ function Game:set_language()
             "{C:attention}50%{} hold, {C:red}20%{} crash",
         },
     }
+    G.localization.descriptions.Joker.j_dnd = {
+        name = "Do Not Disturb",
+        text = {
+            "{C:attention}Boss Blind{} effects",
+            "are completely {C:red}disabled{}",
+        },
+    }
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
-            "Start run with",
-            "{C:attention}Stocks{} joker ({C:attention}Eternal{})",
+            "Start run with a random",
+            "{C:attention}PhoneDeck{} joker",
         },
     }
 
@@ -176,6 +208,7 @@ function Game:set_language()
     parse_loc_entry(G.localization.descriptions.Joker.j_playlist)
     parse_loc_entry(G.localization.descriptions.Joker.j_battery)
     parse_loc_entry(G.localization.descriptions.Joker.j_stocks)
+    parse_loc_entry(G.localization.descriptions.Joker.j_dnd)
     parse_loc_entry(G.localization.descriptions.Back.b_smartphone)
 end
 
@@ -368,6 +401,26 @@ function Game:init_item_prototypes()
     table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_stocks)
     oh_load_sprite("j_stocks", "j_stocks", "Mods/PhoneDeck")
 
+    -- Register Do Not Disturb joker
+    G.P_CENTERS.j_dnd = {
+        key = "j_dnd",
+        order = 209,
+        unlocked = true,
+        discovered = true,
+        blueprint_compat = false,
+        perishable_compat = true,
+        eternal_compat = true,
+        rarity = 4,
+        cost = 20,
+        name = "Do Not Disturb",
+        pos = { x = 4, y = 1 },
+        set = "Joker",
+        config = {},
+        cost_mult = 1.0,
+    }
+    table.insert(G.P_CENTER_POOLS.Joker, G.P_CENTERS.j_dnd)
+    oh_load_sprite("j_dnd", "j_dnd", "Mods/PhoneDeck")
+
     -- Register Smartphone Deck back
     G.P_CENTERS.b_smartphone = {
         key = "b_smartphone",
@@ -381,6 +434,7 @@ function Game:init_item_prototypes()
         config = {},
     }
     table.insert(G.P_CENTER_POOLS.Back, G.P_CENTERS.b_smartphone)
+    oh_load_sprite("b_smartphone", "b_smartphone", "Mods/PhoneDeck")
 end
 
 -- ============================================================
@@ -393,10 +447,24 @@ function Back:apply_to_run()
     original_apply(self)
 
     if self.effect.center.key == "b_smartphone" then
+        -- Weighted random PhoneDeck joker
+        -- Common x4, Uncommon x2, Rare x1 (no Legendary — too impactful as guaranteed starter)
+        local pool = {
+            "j_calculator", "j_calculator", "j_calculator", "j_calculator",
+            "j_flashlight", "j_flashlight", "j_flashlight", "j_flashlight",
+            "j_fitness",    "j_fitness",    "j_fitness",    "j_fitness",
+            "j_camera",     "j_camera",
+            "j_maps",       "j_maps",
+            "j_alarm",      "j_alarm",
+            "j_playlist",
+            "j_battery",
+            "j_stocks",
+        }
+        local chosen_key = pool[math.random(#pool)]
+
         G.E_MANAGER:add_event(Event({
             func = function()
-                local card = add_joker("j_stocks", nil, nil, true)
-                card.ability.eternal = true
+                add_joker(chosen_key)
                 return true
             end,
         }))
@@ -647,4 +715,48 @@ function Card:generate_UIBox_ability_table()
         end
     end
     return original_gen_ui(self)
+end
+
+-- ============================================================
+-- Do Not Disturb — disable boss blind effects
+-- ============================================================
+
+local function has_dnd_joker()
+    if G.jokers and G.jokers.cards then
+        for _, joker in ipairs(G.jokers.cards) do
+            if joker.config and joker.config.center
+               and joker.config.center.key == "j_dnd" then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- Prevent boss blinds from debuffing cards (suit/rank restrictions)
+local original_debuff_card = Blind.debuff_card
+function Blind:debuff_card(card, from_blind)
+    if has_dnd_joker() then return end
+    return original_debuff_card(self, card, from_blind)
+end
+
+-- Prevent boss blind press_play effects (The Hook, The Tooth, etc.)
+local original_press_play = Blind.press_play
+function Blind:press_play()
+    if has_dnd_joker() then return end
+    return original_press_play(self)
+end
+
+-- Prevent boss blind drawn_to_hand effects (The Wheel, The Fish, etc.)
+local original_drawn_to_hand = Blind.drawn_to_hand
+function Blind:drawn_to_hand(card, from_blind)
+    if has_dnd_joker() then return end
+    return original_drawn_to_hand(self, card, from_blind)
+end
+
+-- Prevent boss blind stay_flipped effects (cards staying face down)
+local original_stay_flipped = Blind.stay_flipped
+function Blind:stay_flipped(area, card)
+    if has_dnd_joker() then return false end
+    return original_stay_flipped(self, area, card)
 end
