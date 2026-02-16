@@ -43,45 +43,75 @@ for conf in mods/*/mod.conf; do
     mod_labels+=("$MOD_NAME — $MOD_DESCRIPTION")
 done
 
-# Separator + testing mods
-has_testing=false
+# Collect testing mods separately
+test_ids=()
+test_names=()
+test_labels=()
 for conf in mods/*/mod.conf; do
     unset MOD_ID MOD_NAME MOD_DESCRIPTION MOD_TESTING
     source "$conf"
     [[ "${MOD_TESTING:-}" == "true" ]] || continue
-    if [[ "$has_testing" == false ]]; then
-        mod_ids+=("")
-        mod_names+=("")
-        mod_labels+=("--- Testing ---")
-        has_testing=true
-    fi
-    mod_ids+=("$MOD_ID")
-    mod_names+=("$MOD_NAME")
-    mod_labels+=("$MOD_NAME — $MOD_DESCRIPTION")
+    test_ids+=("$MOD_ID")
+    test_names+=("$MOD_NAME")
+    test_labels+=("$MOD_NAME — $MOD_DESCRIPTION")
 done
 
-if [[ ${#mod_ids[@]} -eq 0 ]]; then
+if [[ ${#mod_ids[@]} -eq 0 && ${#test_ids[@]} -eq 0 ]]; then
     die "No mods found in mods/*/mod.conf"
 fi
 
-# --- Mod selection ---
+# --- Mod selection (with collapsible Testing section) ---
 
-chosen=$(gum choose --header "Select a mod:" -- "${mod_labels[@]}") || exit 0
+testing_expanded=false
 
-# Map selection back to MOD_ID
-selected_id=""
-selected_name=""
-for i in "${!mod_labels[@]}"; do
-    if [[ "${mod_labels[$i]}" == "$chosen" ]]; then
-        selected_id="${mod_ids[$i]}"
-        selected_name="${mod_names[$i]}"
-        break
+while true; do
+    # Build the display list
+    choose_ids=("${mod_ids[@]}")
+    choose_names=("${mod_names[@]}")
+    choose_labels=("${mod_labels[@]}")
+
+    if [[ ${#test_ids[@]} -gt 0 ]]; then
+        if [[ "$testing_expanded" == true ]]; then
+            choose_ids+=("__testing_toggle__")
+            choose_names+=("")
+            choose_labels+=("▼ Testing")
+            for i in "${!test_ids[@]}"; do
+                choose_ids+=("${test_ids[$i]}")
+                choose_names+=("${test_names[$i]}")
+                choose_labels+=("  ${test_labels[$i]}")
+            done
+        else
+            choose_ids+=("__testing_toggle__")
+            choose_names+=("")
+            choose_labels+=("▶ Testing")
+        fi
     fi
-done
 
-if [[ -z "$selected_id" ]]; then
-    die "That's a separator, not a mod — please run again and pick a mod"
-fi
+    chosen=$(gum choose --header "Select a mod:" -- "${choose_labels[@]}") || exit 0
+
+    # Map selection back
+    selected_id=""
+    selected_name=""
+    for i in "${!choose_labels[@]}"; do
+        if [[ "${choose_labels[$i]}" == "$chosen" ]]; then
+            selected_id="${choose_ids[$i]}"
+            selected_name="${choose_names[$i]}"
+            break
+        fi
+    done
+
+    # Toggle testing section
+    if [[ "$selected_id" == "__testing_toggle__" ]]; then
+        if [[ "$testing_expanded" == true ]]; then
+            testing_expanded=false
+        else
+            testing_expanded=true
+        fi
+        continue
+    fi
+
+    break
+done
 
 echo ""
 

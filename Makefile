@@ -14,7 +14,7 @@ install:
 	@bash scripts/install-mod.sh $(MOD)
 
 generate:
-	@bash scripts/generate-asset.sh $(MOD) $(ASSET) "$(PROMPT)" $(if $(MODEL),--model $(MODEL))
+	@bash scripts/generate-asset.sh $(MOD) $(ASSET) "$(PROMPT)" $(if $(MODEL),--model $(MODEL)) $(if $(SQUARE),--square)
 
 clean:
 	rm -rf build/

@@ -8,6 +8,6 @@ local original_main_menu = Game.main_menu
 
 function Game:main_menu(change)
     if not original_version then original_version = G.VERSION end
-    G.VERSION = original_version .. " | OpenHeart 0.1 - Made By FarmerBilly27"
+    G.VERSION = original_version .. " | OpenHeart 0.1"
     return original_main_menu(self, change)
 end

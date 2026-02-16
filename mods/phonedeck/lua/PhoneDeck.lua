@@ -194,8 +194,9 @@ function Game:set_language()
     G.localization.descriptions.Back.b_smartphone = {
         name = "Smartphone Deck",
         text = {
-            "Start run with a random",
-            "{C:attention}PhoneDeck{} joker",
+            "Start run with {C:attention}2{} random",
+            "{C:attention}PhoneDeck{} jokers",
+            "{C:red}-1{} hand, {C:red}-1{} discard",
         },
     }
 
@@ -447,8 +448,12 @@ function Back:apply_to_run()
     original_apply(self)
 
     if self.effect.center.key == "b_smartphone" then
-        -- Weighted random PhoneDeck joker
-        -- Common x4, Uncommon x2, Rare x1 (no Legendary — too impactful as guaranteed starter)
+        -- Debuff: -1 hand, -1 discard (3 hands, 2 discards instead of 4/3)
+        G.GAME.round_resets.hands = G.GAME.round_resets.hands - 1
+        G.GAME.round_resets.discards = G.GAME.round_resets.discards - 1
+
+        -- 2 weighted random PhoneDeck jokers (no duplicates, no Legendary)
+        -- Common x4, Uncommon x2, Rare x1
         local pool = {
             "j_calculator", "j_calculator", "j_calculator", "j_calculator",
             "j_flashlight", "j_flashlight", "j_flashlight", "j_flashlight",
@@ -460,11 +465,21 @@ function Back:apply_to_run()
             "j_battery",
             "j_stocks",
         }
-        local chosen_key = pool[math.random(#pool)]
+
+        -- Pick first joker
+        local first_key = pool[math.random(#pool)]
+
+        -- Remove all instances of first pick, then pick second
+        local pool2 = {}
+        for _, k in ipairs(pool) do
+            if k ~= first_key then pool2[#pool2 + 1] = k end
+        end
+        local second_key = pool2[math.random(#pool2)]
 
         G.E_MANAGER:add_event(Event({
             func = function()
-                add_joker(chosen_key)
+                add_joker(first_key)
+                add_joker(second_key)
                 return true
             end,
         }))

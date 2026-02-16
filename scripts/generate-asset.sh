@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # generate-asset.sh — generate mod art via Gemini image generation API
-# Usage: generate-asset.sh <mod_id> <asset_key> "<prompt>" [--model MODEL]
+# Usage: generate-asset.sh <mod_id> <asset_key> "<prompt>" [--model MODEL] [--square]
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
 
 # --- Parse arguments ---
-[ $# -ge 3 ] || die "Usage: generate-asset.sh <mod_id> <asset_key> \"<prompt>\" [--model MODEL]"
+[ $# -ge 3 ] || die "Usage: generate-asset.sh <mod_id> <asset_key> \"<prompt>\" [--model MODEL] [--square]"
 
 MOD_ID="$1"
 ASSET_KEY="$2"
@@ -13,9 +13,11 @@ PROMPT="$3"
 shift 3
 
 MODEL="gemini-3-pro-image-preview"
+SQUARE=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --model) [ -n "${2:-}" ] || die "--model requires a value"; MODEL="$2"; shift 2 ;;
+        --square) SQUARE=true; shift 1 ;;
         *) die "Unknown option: $1" ;;
     esac
 done
@@ -45,6 +47,16 @@ trap 'rm -rf "$TEMP_DIR"' EXIT
 FULL_PROMPT="${PROMPT}, digital card art, vibrant colors, clean simple background, game asset"
 log_info "Prompt: $FULL_PROMPT"
 log_info "Model: $MODEL"
+if [ "$SQUARE" = true ]; then
+    log_info "Mode: square icon (centered on transparent card)"
+fi
+
+# --- Aspect ratio ---
+if [ "$SQUARE" = true ]; then
+    ASPECT_RATIO="1:1"
+else
+    ASPECT_RATIO="3:4"
+fi
 
 # --- Call Gemini API ---
 log_info "Generating image..."
@@ -53,11 +65,12 @@ API_URL="https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:genera
 
 REQUEST_BODY=$(jq -n \
     --arg prompt "$FULL_PROMPT" \
+    --arg aspect "$ASPECT_RATIO" \
     '{
         contents: [{parts: [{text: $prompt}]}],
         generationConfig: {
             responseModalities: ["IMAGE"],
-            imageConfig: { aspectRatio: "3:4" }
+            imageConfig: { aspectRatio: $aspect }
         }
     }')
 
@@ -92,25 +105,41 @@ log_info "Received image (${MIME_TYPE})"
 echo "$IMAGE_DATA" | base64 -D > "$TEMP_DIR/raw_image.png"
 [ -s "$TEMP_DIR/raw_image.png" ] || die "Failed to decode base64 image data"
 
-# --- Resize to Balatro sprite dimensions ---
+# --- Resize and post-process ---
 ASSETS_1X="$MOD_DIR/assets/1x"
 ASSETS_2X="$MOD_DIR/assets/2x"
 mkdir -p "$ASSETS_1X" "$ASSETS_2X"
 
-# 2x: 142x190
-cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/2x.png"
-sips -z 190 142 "$TEMP_DIR/2x.png" >/dev/null 2>&1
-cp "$TEMP_DIR/2x.png" "$ASSETS_2X/${ASSET_KEY}.png"
-
-# 1x: 71x95
-cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/1x.png"
-sips -z 95 71 "$TEMP_DIR/1x.png" >/dev/null 2>&1
-cp "$TEMP_DIR/1x.png" "$ASSETS_1X/${ASSET_KEY}.png"
-
-# --- Apply rounded corner transparency ---
 ROUND_CORNERS="$PROJECT_ROOT/scripts/round-corners.py"
-python3 "$ROUND_CORNERS" "$ASSETS_2X/${ASSET_KEY}.png"
-python3 "$ROUND_CORNERS" "$ASSETS_1X/${ASSET_KEY}.png"
+
+if [ "$SQUARE" = true ]; then
+    # Square mode: resize to card-width square, round corners, center on transparent card
+    # 2x: 142x142 square centered on 142x190
+    cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/2x.png"
+    sips -z 142 142 "$TEMP_DIR/2x.png" >/dev/null 2>&1
+    python3 "$ROUND_CORNERS" "$TEMP_DIR/2x.png" --card-size 142x190
+    cp "$TEMP_DIR/2x.png" "$ASSETS_2X/${ASSET_KEY}.png"
+
+    # 1x: 71x71 square centered on 71x95
+    cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/1x.png"
+    sips -z 71 71 "$TEMP_DIR/1x.png" >/dev/null 2>&1
+    python3 "$ROUND_CORNERS" "$TEMP_DIR/1x.png" --card-size 71x95
+    cp "$TEMP_DIR/1x.png" "$ASSETS_1X/${ASSET_KEY}.png"
+else
+    # Standard mode: resize to card dimensions, round corners
+    # 2x: 142x190
+    cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/2x.png"
+    sips -z 190 142 "$TEMP_DIR/2x.png" >/dev/null 2>&1
+    cp "$TEMP_DIR/2x.png" "$ASSETS_2X/${ASSET_KEY}.png"
+
+    # 1x: 71x95
+    cp "$TEMP_DIR/raw_image.png" "$TEMP_DIR/1x.png"
+    sips -z 95 71 "$TEMP_DIR/1x.png" >/dev/null 2>&1
+    cp "$TEMP_DIR/1x.png" "$ASSETS_1X/${ASSET_KEY}.png"
+
+    python3 "$ROUND_CORNERS" "$ASSETS_2X/${ASSET_KEY}.png"
+    python3 "$ROUND_CORNERS" "$ASSETS_1X/${ASSET_KEY}.png"
+fi
 
 # --- Verify dimensions ---
 verify_dims() {
@@ -129,6 +158,9 @@ verify_dims "$ASSETS_2X/${ASSET_KEY}.png" 142 190
 log_success "Generated asset: ${ASSET_KEY}"
 log_info "  1x: $ASSETS_1X/${ASSET_KEY}.png (71x95)"
 log_info "  2x: $ASSETS_2X/${ASSET_KEY}.png (142x190)"
+if [ "$SQUARE" = true ]; then
+    log_info "  Mode: square icon centered on transparent card"
+fi
 log_info ""
 log_info "Next steps:"
 log_info "  1. Review the generated images"
